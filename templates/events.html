@@ -1,0 +1,481 @@
+{% extends "base.html" %}
+
+{% block title %}Events & Logs | AEGIS AI Security Operations Center{% endblock %}
+{% block page_title %}Security Events & Detection Log{% endblock %}
+
+{% block content %}
+<!-- Filtering Bar -->
+<div class="filter-bar">
+    <div class="filter-item">
+        <label class="form-label">Date</label>
+        <input type="date" id="filter-date" class="form-control" onchange="loadEvents(1)">
+    </div>
+
+    <div class="filter-item">
+        <label class="form-label">Entity Category</label>
+        <select id="filter-entity" class="form-control" onchange="loadEvents(1)">
+            <option value="ALL">All Entities</option>
+            <option value="PERSON">Person</option>
+            <option value="VEHICLE">Vehicle</option>
+            <option value="ANIMAL">Animal</option>
+            <option value="OTHER">Other Objects</option>
+        </select>
+    </div>
+
+    <div class="filter-item">
+        <label class="form-label">Recognition</label>
+        <select id="filter-recognition" class="form-control" onchange="loadEvents(1)">
+            <option value="ALL">All Statuses</option>
+            <option value="KNOWN">Known Person</option>
+            <option value="UNKNOWN">Unknown Person</option>
+            <option value="NOT_APPLICABLE">Not Applicable</option>
+        </select>
+    </div>
+
+    <div class="filter-item">
+        <label class="form-label">Severity Level</label>
+        <select id="filter-severity" class="form-control" onchange="loadEvents(1)">
+            <option value="ALL">All Severities</option>
+            <option value="CRITICAL">Critical</option>
+            <option value="HIGH">High</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="LOW">Low</option>
+            <option value="INFO">Info</option>
+        </select>
+    </div>
+
+    <div class="filter-item">
+        <label class="form-label">Direction</label>
+        <select id="filter-direction" class="form-control" onchange="loadEvents(1)">
+            <option value="ALL">All Directions</option>
+            <option value="ENTRY">Entry</option>
+            <option value="EXIT">Exit</option>
+            <option value="NONE">Non-crossing</option>
+        </select>
+    </div>
+
+    <div class="filter-item">
+        <label class="form-label">Person</label>
+        <select id="filter-person" class="form-control" onchange="loadEvents(1)">
+            <option value="ALL">All Persons</option>
+            {% for p in persons %}
+                <option value="{{ p.id }}">{{ p.name }} ({{ p.person_code or 'ID' }})</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button class="btn-ctrl btn-primary" onclick="loadEvents(1)">
+            🔍 Apply
+        </button>
+        <button class="btn-ctrl" onclick="resetFilters()">
+            ↺ Reset
+        </button>
+        <a id="export-csv-btn" href="{{ url_for('events.export_events_csv') }}" class="btn-ctrl" target="_blank">
+            📥 Export CSV
+        </a>
+    </div>
+</div>
+
+<!-- Events Panel with Dual View Switcher -->
+<div class="panel-card">
+    <div class="panel-header">
+        <div class="panel-title">
+            <span>📋</span> Detections Log (<span id="total-count">0</span> Total)
+        </div>
+        
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <!-- View Mode Switcher -->
+            <div class="time-filter-group">
+                <button id="view-toggle-table" class="time-filter-btn active" onclick="switchEventsView('table')">📋 Table</button>
+                <button id="view-toggle-timeline" class="time-filter-btn" onclick="switchEventsView('timeline')">⏳ Timeline</button>
+            </div>
+
+            <!-- Pagination -->
+            <div id="pagination-controls" style="display: flex; gap: 6px; align-items: center;">
+                <button id="btn-prev" class="btn-ctrl" onclick="changePage(-1)" disabled>« Prev</button>
+                <span id="page-indicator" style="font-size: 11.5px; color: var(--text-secondary); margin: 0 4px; font-family: var(--font-mono);">Page 1</span>
+                <button id="btn-next" class="btn-ctrl" onclick="changePage(1)" disabled>Next »</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 1. Table View Container -->
+    <div id="events-table-view" class="table-responsive">
+        <table class="custom-table">
+            <thead>
+                <tr>
+                    <th>Snapshot</th>
+                    <th>ID</th>
+                    <th>Entity Type</th>
+                    <th>Subject / Class</th>
+                    <th>Recognition</th>
+                    <th>Severity</th>
+                    <th>Direction</th>
+                    <th>Confidence</th>
+                    <th>Timestamp</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="events-tbody">
+                <tr>
+                    <td colspan="10" style="text-align: center; padding: 30px; color: var(--text-muted);">
+                        Loading security events...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 2. Modern Timeline View Container (Hidden initially) -->
+    <div id="events-timeline-view" class="panel-body" style="display: none; padding: 20px 24px;">
+        <div id="events-timeline-container" class="timeline-container">
+            <!-- Rendered dynamically -->
+        </div>
+    </div>
+</div>
+
+<!-- Forensic Snapshot Lightbox & Telemetry Modal (Requirement 17) -->
+<div id="event-detail-modal" class="modal-backdrop">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+            <h3 class="modal-title" id="modal-event-title">
+                <span>🔍</span> Event Record Forensics #<span id="modal-event-id"></span>
+            </h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 16px;">
+            <div class="snapshot-viewer-container" style="min-height: 380px;">
+                <div class="snapshot-toolbar">
+                    <button class="btn-ctrl" onclick="zoomModalImage(1.2)" title="Zoom In">🔍+</button>
+                    <button class="btn-ctrl" onclick="zoomModalImage(0.8)" title="Zoom Out">🔍-</button>
+                    <button class="btn-ctrl" onclick="resetModalZoom()" title="Reset Zoom">↺</button>
+                    <a id="modal-download-btn" href="#" download class="btn-ctrl" title="Download High-Res Snapshot">📥</a>
+                </div>
+                <img id="modal-snapshot-img" src="" alt="Event Snapshot" class="snapshot-viewer-img">
+            </div>
+
+            <!-- Metadata Grid -->
+            <div id="modal-metadata-grid" style="margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px;">
+                <!-- Filled dynamically -->
+            </div>
+        </div>
+        <div class="modal-footer" style="justify-content: space-between;">
+            <!-- Prev / Next Navigation buttons -->
+            <div style="display: flex; gap: 8px;">
+                <button id="modal-btn-prev" class="btn-ctrl" onclick="navigateEventModal(-1)">« Previous Event</button>
+                <button id="modal-btn-next" class="btn-ctrl" onclick="navigateEventModal(1)">Next Event »</button>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button id="modal-btn-ack" class="btn-ctrl btn-primary" onclick="acknowledgeCurrentEvent()">
+                    ✓ Acknowledge Event
+                </button>
+                <button class="btn-ctrl" onclick="closeModal()">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentPage = 1;
+let totalPages = 1;
+let currentEventsList = [];
+let currentEventIndex = -1;
+let currentEventsView = "table";
+let modalZoom = 1.0;
+
+function switchEventsView(mode) {
+    currentEventsView = mode;
+    const tableView = document.getElementById("events-table-view");
+    const timelineView = document.getElementById("events-timeline-view");
+    const btnTable = document.getElementById("view-toggle-table");
+    const btnTimeline = document.getElementById("view-toggle-timeline");
+
+    if (mode === "timeline") {
+        tableView.style.display = "none";
+        timelineView.style.display = "block";
+        btnTable.classList.remove("active");
+        btnTimeline.classList.add("active");
+        renderEventsTimeline(currentEventsList);
+    } else {
+        tableView.style.display = "block";
+        timelineView.style.display = "none";
+        btnTable.classList.add("active");
+        btnTimeline.classList.remove("active");
+        renderEventsTable(currentEventsList);
+    }
+}
+
+function loadEvents(page = 1) {
+    currentPage = page;
+    const date = document.getElementById("filter-date").value;
+    const entity = document.getElementById("filter-entity").value;
+    const rec = document.getElementById("filter-recognition").value;
+    const sev = document.getElementById("filter-severity").value;
+    const dir = document.getElementById("filter-direction").value;
+    const person = document.getElementById("filter-person").value;
+
+    let url = `/api/events?page=${page}&per_page=20`;
+    if (date) url += `&date=${encodeURIComponent(date)}`;
+    if (entity !== "ALL") url += `&entity_type=${encodeURIComponent(entity)}`;
+    if (rec !== "ALL") url += `&recognition_status=${encodeURIComponent(rec)}`;
+    if (sev !== "ALL") url += `&severity=${encodeURIComponent(sev)}`;
+    if (dir !== "ALL") url += `&direction=${encodeURIComponent(dir)}`;
+    if (person !== "ALL") url += `&person_id=${encodeURIComponent(person)}`;
+
+    // Update Export link
+    document.getElementById("export-csv-btn").href = `/events/export/csv?entity_type=${entity}&recognition_status=${rec}&severity=${sev}`;
+
+    fetch(url)
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === "success") {
+                currentEventsList = res.events || [];
+                totalPages = res.pages || 1;
+                document.getElementById("total-count").textContent = res.total;
+                document.getElementById("page-indicator").textContent = `Page ${res.page} of ${Math.max(1, res.pages)}`;
+                document.getElementById("btn-prev").disabled = !res.has_prev;
+                document.getElementById("btn-next").disabled = !res.has_next;
+
+                if (currentEventsView === "timeline") {
+                    renderEventsTimeline(currentEventsList);
+                } else {
+                    renderEventsTable(currentEventsList);
+                }
+            }
+        })
+        .catch(err => console.error("Error fetching events:", err));
+}
+
+function renderEventsTable(events) {
+    const tbody = document.getElementById("events-tbody");
+    if (!events || events.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text-muted);">No matching security events found.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = events.map((ev, index) => {
+        let badgeHTML = getRecognitionBadge(ev);
+        let sevBadge = getSeverityBadge(ev.severity);
+        let dirBadge = getDirectionBadge(ev.direction);
+
+        let snapHTML = `<span style="color:var(--text-muted);font-size:11px;">No snap</span>`;
+        if (ev.snapshot_path) {
+            snapHTML = `<img src="/storage/file/${ev.snapshot_path}" alt="Snap" class="thumbnail-img" onclick="openEventModalByIndex(${index})">`;
+        }
+
+        return `
+            <tr style="${ev.is_acknowledged === false && (ev.severity === 'CRITICAL' || ev.severity === 'HIGH') ? 'background: rgba(239, 68, 68, 0.06);' : ''}">
+                <td>${snapHTML}</td>
+                <td style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted);">#${ev.id}</td>
+                <td><strong>${escapeHTML(ev.entity_type)}</strong></td>
+                <td>${escapeHTML(ev.entity_name)}</td>
+                <td>${badgeHTML}</td>
+                <td>${sevBadge}</td>
+                <td>${dirBadge}</td>
+                <td style="font-family:var(--font-mono);font-size:12px;">${ev.confidence_percent}</td>
+                <td style="font-size:12px;">
+                    <div>${ev.time}</div>
+                    <div style="font-size:10.5px;color:var(--text-muted);">${ev.date}</div>
+                </td>
+                <td>
+                    <button class="btn-ctrl" onclick="openEventModalByIndex(${index})" style="padding:3px 8px;font-size:11px;">View</button>
+                </td>
+            </tr>
+        `;
+    }).join("");
+}
+
+function renderEventsTimeline(events) {
+    const container = document.getElementById("events-timeline-container");
+    if (!events || events.length === 0) {
+        container.innerHTML = `<p style="text-align: center; color: var(--text-muted); padding: 30px 0;">No matching events for timeline.</p>`;
+        return;
+    }
+
+    container.innerHTML = events.map((ev, index) => {
+        const isCrit = ev.severity === "CRITICAL" || ev.severity === "HIGH";
+        return `
+            <div class="timeline-card ${isCrit ? 'critical' : ''}">
+                <div class="timeline-node"></div>
+                <div class="timeline-header">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <strong>${escapeHTML(ev.entity_name)}</strong>
+                        ${getRecognitionBadge(ev)}
+                        ${getSeverityBadge(ev.severity)}
+                    </div>
+                    <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);">
+                        ${ev.date} ${ev.time}
+                    </span>
+                </div>
+                <div class="timeline-body">
+                    ${ev.snapshot_path ? `<img src="/storage/file/${ev.snapshot_path}" alt="Thumb" class="timeline-snap" onclick="openEventModalByIndex(${index})">` : ''}
+                    <div class="timeline-info">
+                        <div style="font-size: 12.5px; color: var(--text-primary); margin-bottom: 4px;">
+                            Direction: ${getDirectionBadge(ev.direction)} • Confidence: ${ev.confidence_percent}
+                        </div>
+                        <div style="font-size: 11.5px; color: var(--text-muted);">
+                            Camera: ${escapeHTML(ev.camera_name || 'Camera #1')} ${ev.zone_name ? `• Zone: ${escapeHTML(ev.zone_name)}` : ''}
+                        </div>
+                    </div>
+                    <button class="btn-ctrl" onclick="openEventModalByIndex(${index})" style="font-size: 11px;">Forensics</button>
+                </div>
+            </div>
+        `;
+    }).join("");
+}
+
+function getRecognitionBadge(ev) {
+    if (ev.recognition_status === "KNOWN") return `<span class="badge badge-known">KNOWN: ${escapeHTML(ev.person_name)}</span>`;
+    if (ev.recognition_status === "UNKNOWN") return `<span class="badge badge-unknown">UNKNOWN PERSON</span>`;
+    if (ev.entity_type === "VEHICLE") return `<span class="badge badge-vehicle">${escapeHTML(ev.entity_name)}</span>`;
+    if (ev.entity_type === "ANIMAL") return `<span class="badge badge-animal">${escapeHTML(ev.entity_name)}</span>`;
+    return `<span class="badge badge-info">${escapeHTML(ev.entity_type)}</span>`;
+}
+
+function getSeverityBadge(sev) {
+    if (sev === "CRITICAL") return `<span class="badge badge-critical">CRITICAL</span>`;
+    if (sev === "HIGH") return `<span class="badge badge-high">HIGH</span>`;
+    if (sev === "MEDIUM") return `<span class="badge badge-medium">MEDIUM</span>`;
+    if (sev === "LOW") return `<span class="badge badge-low">LOW</span>`;
+    return `<span class="badge badge-info">INFO</span>`;
+}
+
+function getDirectionBadge(dir) {
+    if (dir === "ENTRY") return `<span class="badge badge-entry">↓ ENTRY</span>`;
+    if (dir === "EXIT") return `<span class="badge badge-exit">↑ EXIT</span>`;
+    return `<span style="color:var(--text-muted);font-size:12px;">—</span>`;
+}
+
+function openEventModalByIndex(index) {
+    if (index < 0 || index >= currentEventsList.length) return;
+    currentEventIndex = index;
+    const ev = currentEventsList[index];
+
+    document.getElementById("modal-event-id").textContent = ev.id;
+    const img = document.getElementById("modal-snapshot-img");
+    const dlBtn = document.getElementById("modal-download-btn");
+
+    if (ev.snapshot_path) {
+        const snapUrl = `/storage/file/${ev.snapshot_path}`;
+        img.src = snapUrl;
+        img.style.display = "block";
+        dlBtn.href = snapUrl;
+        dlBtn.setAttribute("download", ev.snapshot_path.split("/").pop());
+    } else {
+        img.style.display = "none";
+        dlBtn.href = "#";
+    }
+
+    resetModalZoom();
+
+    // Fill metadata grid
+    const metaGrid = document.getElementById("modal-metadata-grid");
+    metaGrid.innerHTML = `
+        <div style="background: rgba(10, 14, 23, 0.7); padding: 12px; border-radius: 6px; border: 1px solid var(--border-color);">
+            <div style="color: var(--text-muted); font-size: 11px;">SUBJECT CLASSIFICATION</div>
+            <div style="margin-top: 4px;"><strong>${escapeHTML(ev.entity_name)}</strong> (${escapeHTML(ev.entity_type)})</div>
+            <div style="margin-top: 4px;">Status: ${getRecognitionBadge(ev)}</div>
+            <div style="margin-top: 4px;">Confidence: <strong>${ev.confidence_percent}</strong></div>
+        </div>
+        <div style="background: rgba(10, 14, 23, 0.7); padding: 12px; border-radius: 6px; border: 1px solid var(--border-color);">
+            <div style="color: var(--text-muted); font-size: 11px;">SPATIAL & SEVERITY TELEMETRY</div>
+            <div style="margin-top: 4px;">Camera: <strong>${escapeHTML(ev.camera_name || 'Camera #1')}</strong></div>
+            <div style="margin-top: 4px;">Direction: ${getDirectionBadge(ev.direction)}</div>
+            <div style="margin-top: 4px;">Severity: ${getSeverityBadge(ev.severity)}</div>
+            <div style="margin-top: 4px; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);">
+                ${ev.date} ${ev.time}
+            </div>
+        </div>
+    `;
+
+    // Setup Prev/Next buttons
+    document.getElementById("modal-btn-prev").disabled = (index === 0);
+    document.getElementById("modal-btn-next").disabled = (index === currentEventsList.length - 1);
+
+    // Setup Acknowledge button
+    const ackBtn = document.getElementById("modal-btn-ack");
+    if (ackBtn) {
+        if (ev.is_acknowledged) {
+            ackBtn.textContent = "✓ Acknowledged";
+            ackBtn.disabled = true;
+        } else {
+            ackBtn.textContent = "✓ Acknowledge Event";
+            ackBtn.disabled = false;
+        }
+    }
+
+    document.getElementById("event-detail-modal").classList.add("show");
+}
+
+function navigateEventModal(delta) {
+    openEventModalByIndex(currentEventIndex + delta);
+}
+
+function acknowledgeCurrentEvent() {
+    if (currentEventIndex < 0 || currentEventIndex >= currentEventsList.length) return;
+    const ev = currentEventsList[currentEventIndex];
+
+    fetch(`/api/events/${ev.id}/acknowledge`, { method: "POST" })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === "success") {
+                ev.is_acknowledged = true;
+                const ackBtn = document.getElementById("modal-btn-ack");
+                if (ackBtn) {
+                    ackBtn.textContent = "✓ Acknowledged";
+                    ackBtn.disabled = true;
+                }
+            }
+        });
+}
+
+function closeModal() {
+    document.getElementById("event-detail-modal").classList.remove("show");
+}
+
+function zoomModalImage(factor) {
+    const img = document.getElementById("modal-snapshot-img");
+    if (!img) return;
+    modalZoom = Math.max(0.5, Math.min(3.0, modalZoom * factor));
+    img.style.transform = `scale(${modalZoom})`;
+}
+
+function resetModalZoom() {
+    const img = document.getElementById("modal-snapshot-img");
+    if (!img) return;
+    modalZoom = 1.0;
+    img.style.transform = `scale(1.0)`;
+}
+
+function changePage(delta) {
+    const target = currentPage + delta;
+    if (target >= 1 && target <= totalPages) {
+        loadEvents(target);
+    }
+}
+
+function resetFilters() {
+    document.getElementById("filter-date").value = "";
+    document.getElementById("filter-entity").value = "ALL";
+    document.getElementById("filter-recognition").value = "ALL";
+    document.getElementById("filter-severity").value = "ALL";
+    document.getElementById("filter-direction").value = "ALL";
+    document.getElementById("filter-person").value = "ALL";
+    loadEvents(1);
+}
+
+function escapeHTML(str) {
+    if (!str) return "";
+    return String(str).replace(/[&<>'"]/g, 
+        tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+    );
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    loadEvents(1);
+});
+</script>
+{% endblock %}

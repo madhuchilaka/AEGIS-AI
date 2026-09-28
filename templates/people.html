@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block title %}People Management | AEGIS AI Security{% endblock %}
+{% block page_title %}Authorized Personnel & Subject Registry{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <p style="font-size: 13.5px; color: var(--text-secondary);">
+        Manage enrolled personnel, member profiles, and facial biometric enrollment records.
+    </p>
+    <button class="btn-ctrl btn-primary" onclick="openAddPersonModal()">
+        + Register New Person
+    </button>
+</div>
+
+<!-- People Table -->
+<div class="panel-card">
+    <div class="panel-header">
+        <div class="panel-title">
+            <span>👥</span> Registered People ({{ persons|length }} Total)
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="custom-table">
+            <thead>
+                <tr>
+                    <th>Subject</th>
+                    <th>Code / ID</th>
+                    <th>Contact Info</th>
+                    <th>Status</th>
+                    <th>Face Biometrics</th>
+                    <th>Events Count</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if persons %}
+                    {% for p in persons %}
+                    <tr>
+                        <td>
+                            <strong>{{ p.name }}</strong>
+                            <div style="font-size: 11px; color: var(--text-muted);">Joined {{ p.created_at.strftime('%Y-%m-%d') }}</div>
+                        </td>
+                        <td>
+                            <span style="font-family: var(--font-mono); color: #58a6ff;">{{ p.person_code or 'N/A' }}</span>
+                        </td>
+                        <td style="font-size: 12px;">
+                            <div>{{ p.email or '—' }}</div>
+                            <div style="color: var(--text-muted);">{{ p.phone or '' }}</div>
+                        </td>
+                        <td>
+                            {% if p.status == 'active' %}
+                                <span class="badge badge-known">ACTIVE</span>
+                            {% else %}
+                                <span class="badge" style="background:#21262d;color:#8b949e;">INACTIVE</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if p.is_enrolled %}
+                                <span class="badge badge-known">
+                                    ✓ ENROLLED ({{ p.sample_count }} Sample{% if p.sample_count > 1 %}s{% endif %})
+                                </span>
+                            {% else %}
+                                <span class="badge badge-unknown">NOT ENROLLED</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-family: var(--font-mono); font-size: 12px;">
+                            {{ p.events.count() }} event(s)
+                        </td>
+                        <td>
+                            <div style="display: flex; gap: 6px;">
+                                <a href="{{ url_for('people.face_enrollment', person_id=p.id) }}" class="btn-ctrl btn-primary" style="padding: 4px 8px; font-size: 11px;" title="Enroll or re-enroll face samples">
+                                    👤 Enroll Face
+                                </a>
+                                <button class="btn-ctrl" onclick="toggleStatus({{ p.id }})" style="padding: 4px 8px; font-size: 11px;">
+                                    {% if p.status == 'active' %}Disable{% else %}Enable{% endif %}
+                                </button>
+                                <button class="btn-ctrl btn-danger" onclick="deletePerson({{ p.id }}, '{{ p.name|escape }}')" style="padding: 4px 8px; font-size: 11px;">
+                                    🗑️
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 30px; color: var(--text-muted);">
+                            No persons registered yet. Click "Register New Person" to get started.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Person Modal -->
+<div id="add-person-modal" class="modal-backdrop">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3 class="modal-title">Register New Subject Profile</h3>
+            <button class="modal-close" onclick="closeAddPersonModal()">&times;</button>
+        </div>
+        <form onsubmit="handleCreatePerson(event)">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label" for="add-name">Full Name *</label>
+                    <input type="text" id="add-name" class="form-control" placeholder="e.g. John Doe" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="add-code">Employee / Student / Badge ID</label>
+                    <input type="text" id="add-code" class="form-control" placeholder="e.g. EMP001">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="add-email">Email</label>
+                        <input type="email" id="add-email" class="form-control" placeholder="john@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="add-phone">Phone</label>
+                        <input type="tel" id="add-phone" class="form-control" placeholder="+1234567890">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="add-notes">Notes / Department</label>
+                    <textarea id="add-notes" class="form-control" rows="2" placeholder="e.g. Facilities Management, Level 2 Clearance"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-ctrl" onclick="closeAddPersonModal()">Cancel</button>
+                <button type="submit" class="btn-ctrl btn-primary">Create Profile</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openAddPersonModal() {
+    document.getElementById("add-person-modal").classList.add("show");
+}
+
+function closeAddPersonModal() {
+    document.getElementById("add-person-modal").classList.remove("show");
+}
+
+function handleCreatePerson(e) {
+    e.preventDefault();
+    const payload = {
+        name: document.getElementById("add-name").value.trim(),
+        person_code: document.getElementById("add-code").value.trim(),
+        email: document.getElementById("add-email").value.trim(),
+        phone: document.getElementById("add-phone").value.trim(),
+        notes: document.getElementById("add-notes").value.trim()
+    };
+
+    fetch("/api/people", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(res => {
+        if (res.status === "success") {
+            window.location.reload();
+        } else {
+            alert(res.message || "Failed to create person.");
+        }
+    })
+    .catch(err => alert("Network error: " + err));
+}
+
+function toggleStatus(personId) {
+    fetch(`/api/people/${personId}/toggle-status`, { method: "POST" })
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === "success") {
+                window.location.reload();
+            }
+        });
+}
+
+function deletePerson(personId, name) {
+    if (confirm(`Are you sure you want to delete ${name} and all enrolled face biometrics?`)) {
+        fetch(`/api/people/${personId}`, { method: "DELETE" })
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === "success") {
+                    window.location.reload();
+                } else {
+                    alert(res.message || "Failed to delete.");
+                }
+            });
+    }
+}
+</script>
+{% endblock %}

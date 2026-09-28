@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: intelligent-premises-security
+    runtime: docker
+    plan: free
+    region: oregon
+    branch: main
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PORT
+        value: 5000
+      - key: CAMERA_SOURCE
+        value: "0"
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        value: Admin@123
+      - key: DETECTION_CONFIDENCE
+        value: "0.45"
+      - key: FACE_RECOGNITION_THRESHOLD
+        value: "0.40"
+      - key: LOITERING_THRESHOLD
+        value: "60"
+      - key: REPEATED_EVENT_THRESHOLD
+        value: "3"
+      - key: RESTRICTED_ZONE_ENABLED
+        value: "true"
+      - key: UNAUTHORIZED_ENTRY_WORKFLOW
+        value: "true"
+    healthCheckPath: /login

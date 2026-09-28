@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | AEGIS AI Security Operations Center{% endblock %}
+{% block page_title %}Security Command Center{% endblock %}
+
+{% block content %}
+<!-- Top Telemetry 8 Stat Cards -->
+<div class="stats-grid">
+    <!-- 1. Today's Events -->
+    <div class="stat-card">
+        <div class="stat-header">
+            <span>Today's Captures</span>
+            <span class="stat-icon">🚨</span>
+        </div>
+        <div class="stat-value" id="stat-today-events">{{ today_events }}</div>
+        <div class="stat-footer">
+            <span class="stat-subtext">Automated captures</span>
+            <span class="trend-badge positive" id="trend-events">LIVE</span>
+        </div>
+    </div>
+
+    <!-- 2. Known People -->
+    <div class="stat-card emerald">
+        <div class="stat-header">
+            <span>Known People</span>
+            <span class="stat-icon">👤</span>
+        </div>
+        <div class="stat-value" id="stat-known-people">{{ known_people }}</div>
+        <div class="stat-footer">
+            <span class="stat-subtext">Recognized facial matches</span>
+            <span class="trend-badge positive">VERIFIED</span>
+        </div>
+    </div>
+
+    <!-- 3. Unknown People -->
+    <div class="stat-card red">
+        <div class="stat-header">
+            <span>Unknown People</span>
+            <span class="stat-icon">⚠️</span>
+        </div>
+        <div class="stat-value" id="stat-unknown-people">{{ unknown_people }}</div>
+        <div class="stat-footer">
+            <span class="stat-subtext">Unenrolled faces</span>
+            <span class="trend-badge alert" id="trend-unknown">MONITORED</span>
+        </div>
+    </div>
+
+    <!-- 4. Total People -->
+    <div class="stat-card cyan">
+        <div class="stat-header">
+            <span>Total People</span>
+            <span class="stat-icon">👥</span>
+        </div>
+        <div class="stat-value" id="stat-people-detected">{{ people_detected }}</div>
+        <div class="stat-footer">
+            <span class="stat-subtext">Cumulative human subjects</span>
+            <span class="trend-badge neutral">ALL ZONES</span>
+        </div>
+    </div>
+
+    <!-- 5. Vehicles -->
+    <div class="stat-card">
+        <div class="stat-header">
+            <span>Vehicles</span>
+            <span class="stat-icon">🚗</span>
+        </div>
+        <div class="stat-value" id="stat-vehicles">{{ vehicles_count }}</div>
+        <div class="stat-footer">
+            <span class="stat-subtext">Cars, bikes, trucks</span>
+            <span class="trend-badge neutral">PERIMETER</span>
+        </div>
+    </div>
+
+    <!-- 6. Animals -->
+    <div class="stat-card amber">
+        <div class="stat-header">
+            <span>Animals</span>
+            <span class="stat-icon">🐾</span>
+        </div>
+        <div class="stat-value" id="stat-animals">{{ animals_count }}</div>
+        <div class="stat-footer">
+            <span class="stat-subtext">Fauna & domestic pets</span>
+            <span class="trend-badge neutral">FILTERED</span>
+        </div>
+    </div>
+
+    <!-- 7. Security Alerts / Threats -->
+    <div class="stat-card red">
+        <div class="stat-header">
+            <span>Security Alerts</span>
+            <span class="stat-icon">🛡️</span>
+        </div>
+        <div class="stat-value" id="stat-suspicious">{{ suspicious_count|default(0) }}</div>
+        <div class="stat-footer">
+            <span class="stat-subtext">Unauthorized / loitering</span>
+            <span class="trend-badge alert">HIGH PRIORITY</span>
+        </div>
+    </div>
+
+    <!-- 8. Storage Used -->
+    <div class="stat-card purple">
+        <div class="stat-header">
+            <span>Storage Used</span>
+            <span class="stat-icon">💾</span>
+        </div>
+        <div class="stat-value" id="stat-storage-used">{{ storage_stats.total_size_mb }} MB</div>
+        <div class="stat-footer">
+            <span class="stat-subtext">{{ storage_stats.snapshots_count }} forensic snapshots</span>
+            <span class="trend-badge positive">30D RETENTION</span>
+        </div>
+    </div>
+</div>
+
+<!-- Main Row: Live Feed Preview + Real-time Incident Feed -->
+<div class="dashboard-layout">
+    <!-- Live Stream Console -->
+    <div class="panel-card" style="margin-bottom: 0;">
+        <div class="panel-header">
+            <div class="panel-title">
+                <span>📹</span> Live Premises Video Stream
+                <span id="stream-active-tracks-badge" class="badge badge-vehicle" style="font-size: 10px; margin-left: 8px;">0 Tracks</span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn-ctrl" onclick="toggleFullscreen('main-video-container')" title="Fullscreen View">
+                    ⛶ Fullscreen
+                </button>
+                <a href="{{ url_for('monitoring.monitor') }}" class="btn-ctrl btn-primary" style="padding: 4px 10px; font-size: 11.5px;">
+                    Full Console ↗
+                </a>
+            </div>
+        </div>
+        <div class="panel-body" style="padding: 14px;">
+            <div id="main-video-container" class="video-container" style="max-height: 480px;">
+                <img id="main-video-feed" src="{{ url_for('monitoring.video_feed') }}" alt="Live Feed" class="video-stream-img" loading="eager">
+            </div>
+
+            <!-- Video Controls Toolbar Below Video -->
+            <div style="margin-top: 14px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: rgba(10, 14, 23, 0.7); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <div class="stream-controls-bar">
+                    <button id="btn-start" class="btn-ctrl btn-primary" onclick="sendCameraCommand('start')">
+                        ▶ Start Stream
+                    </button>
+                    <button id="btn-stop" class="btn-ctrl btn-danger" onclick="sendCameraCommand('stop')" style="display:none;">
+                        ⏹ Stop Stream
+                    </button>
+                    <button id="btn-pause" class="btn-ctrl" onclick="sendCameraCommand('pause')">
+                        ⏸ Pause
+                    </button>
+                    <button id="btn-resume" class="btn-ctrl btn-primary" onclick="sendCameraCommand('resume')" style="display:none;">
+                        ⏵ Resume
+                    </button>
+                    <button class="btn-ctrl" onclick="triggerSnapshotCapture()">
+                        📸 Capture Snapshot
+                    </button>
+                </div>
+
+                <div id="stream-fps-counter" style="font-family: var(--font-mono); font-size: 11.5px; color: var(--accent-cyan);">
+                    -- FPS | Live Pipeline
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Real-Time Event Stream / Sliding Ticker -->
+    <div class="panel-card" style="margin-bottom: 0;">
+        <div class="panel-header">
+            <div class="panel-title">
+                <span>⚡</span> Real-Time Incident Stream
+            </div>
+            <span class="badge badge-entry" style="font-size: 10px;">AUTO-UPDATES</span>
+        </div>
+        <div class="panel-body" style="padding: 14px;">
+            <div id="live-event-ticker" class="live-event-ticker">
+                {% if recent_events %}
+                    {% for ev in recent_events[:6] %}
+                    <div class="ticker-item {% if ev.severity in ['CRITICAL', 'HIGH'] %}critical{% elif ev.recognition_status == 'KNOWN' %}known{% else %}warning{% endif %}">
+                        {% if ev.snapshot_path %}
+                            <img src="{{ url_for('storage_routes.serve_storage_file', filename=ev.snapshot_path) }}" alt="Thumb" class="ticker-thumb" onclick="openSnapshotLightbox('{{ url_for('storage_routes.serve_storage_file', filename=ev.snapshot_path) }}', '{{ ev.entity_name }}', '{{ ev.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}')">
+                        {% else %}
+                            <div class="ticker-thumb" style="background: #1e293b; display:flex; align-items:center; justify-content:center; font-size: 14px;">📷</div>
+                        {% endif %}
+                        <div class="ticker-details">
+                            <div class="ticker-title">{{ ev.entity_name }}</div>
+                            <div class="ticker-meta">
+                                <span>{{ ev.timestamp.strftime('%H:%M:%S') }}</span>
+                                <span>•</span>
+                                <span style="color: {% if ev.recognition_status == 'KNOWN' %}#34d399{% elif ev.recognition_status == 'UNKNOWN' %}#f87171{% else %}#60a5fa{% endif %};">
+                                    {{ ev.recognition_status }}
+                                </span>
+                                <span>•</span>
+                                <span>{{ ev.direction }}</span>
+                            </div>
+                        </div>
+                        <a href="{{ url_for('events.detail', event_id=ev.id) }}" class="btn-ctrl" style="padding: 3px 8px; font-size: 11px;">
+                            View
+                        </a>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p style="color: var(--text-muted); text-align: center; padding: 40px 0; font-size: 12.5px;">
+                        Listening for camera telemetry and motion events...
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Advanced Analytics Section -->
+<div class="panel-card" style="margin-top: 24px;">
+    <div class="panel-header">
+        <div class="panel-title">
+            <span>📊</span> Telemetry & Incident Intelligence Analytics
+        </div>
+        <!-- Time Filter Selector -->
+        <div class="time-filter-group">
+            <button class="time-filter-btn active" data-range="today" onclick="switchAnalyticsRange('today', this)">Today</button>
+            <button class="time-filter-btn" data-range="7d" onclick="switchAnalyticsRange('7d', this)">7 Days</button>
+            <button class="time-filter-btn" data-range="30d" onclick="switchAnalyticsRange('30d', this)">30 Days</button>
+        </div>
+    </div>
+    <div class="panel-body">
+        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 20px;">
+            <!-- Chart 1: Activity Timeline -->
+            <div style="background: rgba(10, 14, 23, 0.5); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); height: 280px; display: flex; flex-direction: column;">
+                <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 10px; display: flex; justify-content: space-between;">
+                    <span>Detection Frequency Curve</span>
+                    <span id="chart-timeline-label" style="font-family: var(--font-mono); font-size: 11px; color: var(--accent-cyan);">24-Hour</span>
+                </div>
+                <div style="flex-grow: 1; position: relative;">
+                    <canvas id="hourlyEventsChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Chart 2: Known vs Unknown -->
+            <div style="background: rgba(10, 14, 23, 0.5); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); height: 280px; display: flex; flex-direction: column;">
+                <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 10px;">
+                    Face Recognition Breakdown
+                </div>
+                <div style="flex-grow: 1; position: relative;">
+                    <canvas id="recognitionPieChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Chart 3: Entity Classification Distribution -->
+            <div style="background: rgba(10, 14, 23, 0.5); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); height: 280px; display: flex; flex-direction: column;">
+                <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 10px;">
+                    Entity Type Distribution
+                </div>
+                <div style="flex-grow: 1; position: relative;">
+                    <canvas id="entityBarChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Events Section -->
+<div class="panel-card">
+    <div class="panel-header">
+        <div class="panel-title">
+            <span>📋</span> Recent Captured Security Events
+        </div>
+        <a href="{{ url_for('events.index') }}" class="btn-ctrl" style="font-size: 12px;">
+            View Complete Events Log →
+        </a>
+    </div>
+    <div class="table-responsive">
+        <table class="custom-table">
+            <thead>
+                <tr>
+                    <th>Snapshot</th>
+                    <th>Entity</th>
+                    <th>Person / Recognition</th>
+                    <th>Direction</th>
+                    <th>Severity</th>
+                    <th>Confidence</th>
+                    <th>Date & Time</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="recent-events-tbody">
+                {% if recent_events %}
+                    {% for ev in recent_events %}
+                    <tr>
+                        <td>
+                            {% if ev.snapshot_path %}
+                                <img src="{{ url_for('storage_routes.serve_storage_file', filename=ev.snapshot_path) }}" alt="Thumb" class="thumbnail-img" onclick="openSnapshotLightbox('{{ url_for('storage_routes.serve_storage_file', filename=ev.snapshot_path) }}', '{{ ev.entity_name }}', '{{ ev.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}')">
+                            {% else %}
+                                <span style="color: var(--text-muted); font-size: 11px;">No snap</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <strong>{{ ev.entity_name }}</strong>
+                            <div style="font-size: 10.5px; color: var(--text-muted);">{{ ev.entity_type }}</div>
+                        </td>
+                        <td>
+                            {% if ev.recognition_status == 'KNOWN' %}
+                                <span class="badge badge-known">KNOWN: {{ ev.person.name if ev.person else ev.entity_name }}</span>
+                            {% elif ev.recognition_status == 'UNKNOWN' %}
+                                <span class="badge badge-unknown">UNKNOWN PERSON</span>
+                            {% elif ev.entity_type == 'VEHICLE' %}
+                                <span class="badge badge-vehicle">VEHICLE</span>
+                            {% elif ev.entity_type == 'ANIMAL' %}
+                                <span class="badge badge-animal">ANIMAL</span>
+                            {% else %}
+                                <span class="badge badge-info">{{ ev.entity_type }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if ev.direction == 'ENTRY' %}
+                                <span class="badge badge-entry">↓ ENTRY</span>
+                            {% elif ev.direction == 'EXIT' %}
+                                <span class="badge badge-exit">↑ EXIT</span>
+                            {% else %}
+                                <span style="color: var(--text-muted); font-size: 12px;">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if ev.severity == 'CRITICAL' %}
+                                <span class="badge badge-critical">CRITICAL</span>
+                            {% elif ev.severity == 'HIGH' %}
+                                <span class="badge badge-high">HIGH</span>
+                            {% elif ev.severity == 'MEDIUM' %}
+                                <span class="badge badge-medium">MEDIUM</span>
+                            {% elif ev.severity == 'LOW' %}
+                                <span class="badge badge-low">LOW</span>
+                            {% else %}
+                                <span class="badge badge-info">INFO</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span style="font-family: var(--font-mono); font-size: 12px;">{{ (ev.confidence * 100)|int }}%</span>
+                        </td>
+                        <td>
+                            <div style="font-size: 12px;">{{ ev.timestamp.strftime('%H:%M:%S') }}</div>
+                            <div style="font-size: 10.5px; color: var(--text-muted);">{{ ev.timestamp.strftime('%Y-%m-%d') }}</div>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('events.detail', event_id=ev.id) }}" class="btn-ctrl" style="padding: 3px 8px; font-size: 11px;">
+                                Details
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 30px; color: var(--text-muted);">
+                            No security events recorded yet today. Active camera feed is monitoring.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Snapshot Lightbox Modal -->
+<div id="snapshot-lightbox-modal" class="modal-backdrop">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+            <h3 class="modal-title" id="lightbox-title">
+                <span>📸</span> Forensic Snapshot Lightbox
+            </h3>
+            <button class="modal-close" onclick="closeSnapshotLightbox()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 16px; text-align: center;">
+            <div class="snapshot-viewer-container">
+                <div class="snapshot-toolbar">
+                    <button class="btn-ctrl" onclick="zoomSnapshot(1.2)" title="Zoom In">🔍+</button>
+                    <button class="btn-ctrl" onclick="zoomSnapshot(0.8)" title="Zoom Out">🔍-</button>
+                    <button class="btn-ctrl" onclick="resetSnapshotZoom()" title="Reset Zoom">↺</button>
+                    <a id="lightbox-download-link" href="#" download class="btn-ctrl" title="Download High-Res Snapshot">📥</a>
+                </div>
+                <img id="lightbox-img" src="" alt="Snapshot Full-Res" class="snapshot-viewer-img">
+            </div>
+            <div id="lightbox-meta" style="margin-top: 12px; font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono);">
+                <!-- Timestamp & details -->
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-ctrl" onclick="closeSnapshotLightbox()">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

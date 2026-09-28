@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block title %}Face Enrollment Studio | AEGIS AI Security{% endblock %}
+{% block page_title %}Facial Biometric Enrollment Studio{% endblock %}
+
+{% block content %}
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+    <!-- Left Column: Enrollment Capture Console -->
+    <div class="panel-card">
+        <div class="panel-header">
+            <div class="panel-title">
+                <span>📸</span> Biometric Capture Console
+            </div>
+            <span id="enrollment-status-pill" class="badge" style="background:#21262d;color:#8b949e;">Ready</span>
+        </div>
+
+        <div class="panel-body">
+            <!-- Step 1: Select Subject -->
+            <div class="form-group">
+                <label class="form-label" for="enroll-person-select">Select Person to Enroll *</label>
+                <select id="enroll-person-select" class="form-control" onchange="handleSelectPerson(this)">
+                    <option value="">-- Choose Subject Profile --</option>
+                    {% for p in persons %}
+                        <option value="{{ p.id }}" {% if selected_person and selected_person.id == p.id %}selected{% endif %}>
+                            {{ p.name }} ({{ p.person_code or 'ID' }}) - {{ p.sample_count }} sample(s)
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Webcam Live Preview Video -->
+            <div style="margin-bottom: 16px;">
+                <label class="form-label">Live Camera Feed / Face Alignment Guide</label>
+                <div style="position: relative; background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-color);">
+                    <video id="webcam-preview" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover;"></video>
+                    <canvas id="capture-canvas" style="display: none;"></canvas>
+
+                    <!-- Oval Alignment Target Overlay -->
+                    <div style="position: absolute; width: 170px; height: 230px; border: 2px dashed rgba(88, 166, 255, 0.7); border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);">
+                        <div style="position: absolute; top: -22px; width: 100%; text-align: center; color: #58a6ff; font-size: 11px; font-weight: 600;">ALIGN FACE HERE</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Capture Actions -->
+            <div style="display: flex; gap: 10px; margin-bottom: 18px;">
+                <button type="button" class="btn-ctrl btn-primary" onclick="captureSampleFromWebcam()" style="flex: 1; padding: 10px;">
+                    📸 Capture Face Sample
+                </button>
+                <button type="button" class="btn-ctrl" onclick="initWebcam()">
+                    ↺ Reset Camera
+                </button>
+            </div>
+
+            <!-- Alternative: File Upload -->
+            <div style="border-top: 1px solid var(--border-color); padding-top: 16px;">
+                <label class="form-label">Or Upload High-Resolution Portrait Photo</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="file" id="face-file-input" class="form-control" accept="image/*">
+                    <button type="button" class="btn-ctrl" onclick="uploadFaceFile()">
+                        Upload
+                    </button>
+                </div>
+            </div>
+
+            <!-- Result Feedback Box -->
+            <div id="enrollment-result-box" style="margin-top: 16px; display: none; padding: 12px; border-radius: 6px; font-size: 13px;"></div>
+        </div>
+    </div>
+
+    <!-- Right Column: Subject Profile & Enrolled Samples Gallery -->
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+        <div class="panel-card">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <span>👤</span> Enrolled Biometric Samples
+                </div>
+                <button class="btn-ctrl btn-primary" onclick="retrainDatabase()" style="font-size: 11.5px; padding: 4px 10px;">
+                    ⚡ Re-train Database
+                </button>
+            </div>
+
+            <div class="panel-body">
+                <div id="no-person-selected" style="text-align: center; padding: 40px 20px; color: var(--text-muted); {% if selected_person %}display:none;{% endif %}">
+                    Please select or register a person from the dropdown on the left to view and manage their face embeddings.
+                </div>
+
+                <div id="samples-container" style="{% if not selected_person %}display:none;{% endif %}">
+                    <div style="margin-bottom: 14px; font-size: 13px;">
+                        <span id="subject-name-display" style="font-weight: 700; color: #fff;">{{ selected_person.name if selected_person else '' }}</span>
+                        <span id="subject-samples-count" style="color: var(--text-muted); margin-left: 8px;">
+                            ({{ selected_person.sample_count if selected_person else 0 }} sample{% if selected_person and selected_person.sample_count != 1 %}s{% endif %} enrolled)
+                        </span>
+                    </div>
+
+                    <div id="samples-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px;">
+                        <!-- Samples rendered dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quality & Verification Guidelines Card -->
+        <div class="panel-card">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <span>🛡️</span> Biometric Quality Standards
+                </div>
+            </div>
+            <div class="panel-body" style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.6;">
+                <p>• <strong>Lighting</strong>: Ensure even, front-facing illumination. Avoid backlighting and harsh shadows.</p>
+                <p style="margin-top: 6px;">• <strong>Pose Diversity</strong>: For highest recognition accuracy, capture 3-5 samples with minor variations (direct forward, slight smile, 10° left/right).</p>
+                <p style="margin-top: 6px;">• <strong>Auto Validation</strong>: The pipeline automatically tests for blur (Laplacian variance), illumination, and extracts a normalized 128-d SFace embedding vector.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let localStream = null;
+
+function initWebcam() {
+    const video = document.getElementById("webcam-preview");
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showFeedback("Browser webcam access not available. Please use the file upload option.", "danger");
+        return;
+    }
+
+    navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+        .then(stream => {
+            localStream = stream;
+            video.srcObject = stream;
+        })
+        .catch(err => {
+            console.warn("Webcam access error:", err);
+            showFeedback("Could not open browser webcam. Please use photo file upload below.", "warning");
+        });
+}
+
+function handleSelectPerson(selectEl) {
+    const personId = selectEl.value;
+    if (!personId) {
+        document.getElementById("no-person-selected").style.display = "block";
+        document.getElementById("samples-container").style.display = "none";
+        return;
+    }
+    loadPersonSamples(personId);
+}
+
+function loadPersonSamples(personId) {
+    fetch(`/api/people/${personId}`)
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === "success") {
+                const p = res.person;
+                document.getElementById("no-person-selected").style.display = "none";
+                document.getElementById("samples-container").style.display = "block";
+                document.getElementById("subject-name-display").textContent = p.name;
+                document.getElementById("subject-samples-count").textContent = `(${p.samples.length} sample(s) enrolled)`;
+
+                const grid = document.getElementById("samples-grid");
+                if (p.samples.length === 0) {
+                    grid.innerHTML = `<p style="grid-column: 1 / -1; color: var(--text-muted); font-size: 12px;">No face samples captured yet. Click "Capture Face Sample" to begin.</p>`;
+                } else {
+                    grid.innerHTML = p.samples.map(s => `
+                        <div style="background: #0d1117; border: 1px solid var(--border-color); border-radius: 6px; padding: 6px; text-align: center; position: relative;">
+                            <img src="${s.sample_image_path ? '/storage/' + s.sample_image_path : ''}" alt="Sample" style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; background: #000;">
+                            <div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">Score: ${s.quality_score}</div>
+                            <button onclick="deleteSample(${s.id})" style="position: absolute; top: 2px; right: 2px; background: rgba(218,54,51,0.85); color: #fff; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 11px; cursor: pointer;">&times;</button>
+                        </div>
+                    `).join("");
+                }
+            }
+        });
+}
+
+function captureSampleFromWebcam() {
+    const personId = document.getElementById("enroll-person-select").value;
+    if (!personId) {
+        alert("Please select a subject profile first.");
+        return;
+    }
+
+    const video = document.getElementById("webcam-preview");
+    const canvas = document.getElementById("capture-canvas");
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataURL = canvas.toDataURL("image/jpeg", 0.95);
+
+    showFeedback("Analyzing facial biometric quality and extracting 128-d embedding...", "info");
+
+    fetch("/api/face/enroll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            person_id: parseInt(personId),
+            image_base64: dataURL
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === "success") {
+            showFeedback(`✓ ${data.message} (Quality Score: ${data.quality_score})`, "success");
+            loadPersonSamples(personId);
+        } else {
+            showFeedback(`❌ Enrollment Error: ${data.message}`, "danger");
+        }
+    })
+    .catch(err => {
+        showFeedback(`Network error: ${err}`, "danger");
+    });
+}
+
+function uploadFaceFile() {
+    const personId = document.getElementById("enroll-person-select").value;
+    if (!personId) {
+        alert("Please select a subject profile first.");
+        return;
+    }
+
+    const fileInput = document.getElementById("face-file-input");
+    if (!fileInput.files || fileInput.files.length === 0) {
+        alert("Please select an image file to upload.");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("person_id", personId);
+    formData.append("image", fileInput.files[0]);
+
+    showFeedback("Processing image and generating facial feature embedding...", "info");
+
+    fetch("/api/face/enroll", {
+        method: "POST",
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === "success") {
+            showFeedback(`✓ ${data.message} (Quality: ${data.quality_score})`, "success");
+            fileInput.value = "";
+            loadPersonSamples(personId);
+        } else {
+            showFeedback(`❌ Error: ${data.message}`, "danger");
+        }
+    })
+    .catch(err => showFeedback(`Upload error: ${err}`, "danger"));
+}
+
+function deleteSample(sampleId) {
+    if (confirm("Delete this face sample vector?")) {
+        fetch(`/api/face/delete-sample/${sampleId}`, { method: "DELETE" })
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === "success") {
+                    const personId = document.getElementById("enroll-person-select").value;
+                    loadPersonSamples(personId);
+                }
+            });
+    }
+}
+
+function retrainDatabase() {
+    fetch("/api/face/train", { method: "POST" })
+        .then(res => res.json())
+        .then(res => {
+            alert(`Face Recognition Database Updated!\n${res.enrolled_count} active person profiles compiled in memory.`);
+        });
+}
+
+function showFeedback(msg, type) {
+    const box = document.getElementById("enrollment-result-box");
+    box.style.display = "block";
+    box.className = `alert alert-${type}`;
+    box.textContent = msg;
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    initWebcam();
+    const select = document.getElementById("enroll-person-select");
+    if (select.value) {
+        loadPersonSamples(select.value);
+    }
+});
+</script>
+{% endblock %}

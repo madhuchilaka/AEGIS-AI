@@ -1,0 +1,34 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Local Environment Variables (Keep .env.example committed)
+.env
+.env.local
+
+# Virtual Environments
+.venv/
+env/
+venv/
+ENV/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test & coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+instance/*.log
+
+# Operating system files
+.DS_Store
+Thumbs.db

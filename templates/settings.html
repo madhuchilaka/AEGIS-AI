@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}System Settings | AEGIS AI Security{% endblock %}
+{% block page_title %}System & Computer Vision Configuration{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+    <div class="panel-card">
+        <div class="panel-header">
+            <div class="panel-title">
+                <span>⚙️</span> Operational & Detection Parameters
+            </div>
+        </div>
+
+        <form method="POST" action="{{ url_for('settings.index') }}">
+            <div class="panel-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="DETECTION_CONFIDENCE">YOLO Detection Confidence Threshold</label>
+                        <input type="number" id="DETECTION_CONFIDENCE" name="DETECTION_CONFIDENCE" class="form-control" value="{{ settings.DETECTION_CONFIDENCE.value }}" step="0.05" min="0.1" max="0.95" required>
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">{{ settings.DETECTION_CONFIDENCE.description }}</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="FACE_RECOGNITION_THRESHOLD">Face Recognition Threshold (Cosine Similarity)</label>
+                        <input type="number" id="FACE_RECOGNITION_THRESHOLD" name="FACE_RECOGNITION_THRESHOLD" class="form-control" value="{{ settings.FACE_RECOGNITION_THRESHOLD.value }}" step="0.05" min="0.1" max="0.95" required>
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">{{ settings.FACE_RECOGNITION_THRESHOLD.description }}</div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="EVENT_COOLDOWN">Event Cooldown (Seconds)</label>
+                        <input type="number" id="EVENT_COOLDOWN" name="EVENT_COOLDOWN" class="form-control" value="{{ settings.EVENT_COOLDOWN.value }}" min="5" max="300" required>
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">{{ settings.EVENT_COOLDOWN.description }}</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="RETENTION_DAYS">Data Retention Lifespan (Days)</label>
+                        <input type="number" id="RETENTION_DAYS" name="RETENTION_DAYS" class="form-control" value="{{ settings.RETENTION_DAYS.value }}" min="1" max="365" required>
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">{{ settings.RETENTION_DAYS.description }}</div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="FRAME_SKIP">Frame Skip Inference Factor</label>
+                        <input type="number" id="FRAME_SKIP" name="FRAME_SKIP" class="form-control" value="{{ settings.FRAME_SKIP.value }}" min="1" max="10" required>
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">{{ settings.FRAME_SKIP.description }}</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="LINE_POSITION">Virtual Boundary Line Position (Fraction)</label>
+                        <input type="number" id="LINE_POSITION" name="LINE_POSITION" class="form-control" value="{{ settings.LINE_POSITION.value }}" step="0.05" min="0.1" max="0.9" required>
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">{{ settings.LINE_POSITION.description }}</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="LINE_ORIENTATION">Virtual Boundary Orientation</label>
+                    <select id="LINE_ORIENTATION" name="LINE_ORIENTATION" class="form-control">
+                        <option value="horizontal" {% if settings.LINE_ORIENTATION.value == 'horizontal' %}selected{% endif %}>Horizontal (Cross top/bottom)</option>
+                        <option value="vertical" {% if settings.LINE_ORIENTATION.value == 'vertical' %}selected{% endif %}>Vertical (Cross left/right)</option>
+                    </select>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">{{ settings.LINE_ORIENTATION.description }}</div>
+                </div>
+
+                <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end;">
+                    <button type="submit" class="btn-ctrl btn-primary" style="padding: 10px 24px; font-size: 13.5px;">
+                        💾 Save System Settings
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

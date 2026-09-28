@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Security Notifications | AEGIS AI Security Operations Center{% endblock %}
+{% block page_title %}Security Alerts & Incident Stream{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+    <p style="font-size: 13px; color: var(--text-secondary);">
+        Real-time telemetry and intrusion alarms. Filter by category or severity to inspect security incidents.
+    </p>
+    <div style="display: flex; gap: 8px;">
+        <button class="btn-ctrl" onclick="markAllAsRead()">
+            ✓ Mark All As Read
+        </button>
+    </div>
+</div>
+
+<!-- Category Tabs Bar -->
+<div class="category-tabs-bar">
+    <a href="{{ url_for('notifications.index', category='ALL') }}" class="category-tab-btn {% if active_category == 'ALL' %}active{% endif %}">
+        <span>🌐</span> ALL
+        <span class="tab-count">{{ counts.ALL }}</span>
+    </a>
+    <a href="{{ url_for('notifications.index', category='CRITICAL') }}" class="category-tab-btn {% if active_category == 'CRITICAL' %}active{% endif %}">
+        <span>🚨</span> CRITICAL
+        <span class="tab-count" style="color: #f87171;">{{ counts.CRITICAL }}</span>
+    </a>
+    <a href="{{ url_for('notifications.index', category='UNAUTHORIZED') }}" class="category-tab-btn {% if active_category == 'UNAUTHORIZED' %}active{% endif %}">
+        <span>🛑</span> UNAUTHORIZED
+        <span class="tab-count" style="color: #f87171;">{{ counts.UNAUTHORIZED }}</span>
+    </a>
+    <a href="{{ url_for('notifications.index', category='SUSPICIOUS') }}" class="category-tab-btn {% if active_category == 'SUSPICIOUS' %}active{% endif %}">
+        <span>⚠️</span> SUSPICIOUS
+        <span class="tab-count" style="color: #fbbf24;">{{ counts.SUSPICIOUS }}</span>
+    </a>
+    <a href="{{ url_for('notifications.index', category='KNOWN') }}" class="category-tab-btn {% if active_category == 'KNOWN' %}active{% endif %}">
+        <span>👤</span> KNOWN
+        <span class="tab-count" style="color: #34d399;">{{ counts.KNOWN }}</span>
+    </a>
+    <a href="{{ url_for('notifications.index', category='SYSTEM') }}" class="category-tab-btn {% if active_category == 'SYSTEM' %}active{% endif %}">
+        <span>⚙️</span> SYSTEM
+        <span class="tab-count">{{ counts.SYSTEM }}</span>
+    </a>
+</div>
+
+<div class="panel-card">
+    <div class="panel-header">
+        <div class="panel-title">
+            <span>🔔</span> Incident Notification Log ({{ notifications|length }} displayed)
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="custom-table">
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Severity</th>
+                    <th>Category</th>
+                    <th>Alert Title</th>
+                    <th>Incident Details</th>
+                    <th>Snapshot</th>
+                    <th>Timestamp</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if notifications %}
+                    {% for n in notifications %}
+                    <tr style="{% if not n.read_status %}background-color: rgba(56, 139, 253, 0.05);{% endif %}">
+                        <td>
+                            {% if n.read_status %}
+                                <span style="color: var(--text-muted); font-size: 11px;">READ</span>
+                            {% else %}
+                                <span class="badge badge-unknown" style="font-size: 9px; padding: 2px 6px;">NEW</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if n.severity == 'critical' %}
+                                <span class="badge badge-critical">CRITICAL</span>
+                            {% elif n.severity == 'warning' %}
+                                <span class="badge badge-medium">WARNING</span>
+                            {% else %}
+                                <span class="badge badge-low">INFO</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge badge-info" style="font-size: 10px;">{{ n.category or 'GENERAL' }}</span>
+                        </td>
+                        <td><strong>{{ n.title }}</strong></td>
+                        <td style="font-size: 12.5px; color: var(--text-primary);">{{ n.message }}</td>
+                        <td>
+                            {% if n.event and n.event.snapshot_path %}
+                                <a href="{{ url_for('storage_routes.serve_storage_file', filename=n.event.snapshot_path) }}" target="_blank">
+                                    <img src="{{ url_for('storage_routes.serve_storage_file', filename=n.event.snapshot_path) }}" alt="Snapshot" class="thumbnail-img">
+                                </a>
+                            {% else %}
+                                <span style="color: var(--text-muted); font-size: 11px;">No snap</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-size: 12px;">
+                            <div>{{ n.created_at.strftime('%H:%M:%S') }}</div>
+                            <div style="font-size: 10.5px; color: var(--text-muted);">{{ n.created_at.strftime('%Y-%m-%d') }}</div>
+                        </td>
+                        <td>
+                            <div style="display: flex; gap: 4px;">
+                                {% if not n.is_acknowledged %}
+                                    <button class="btn-ctrl btn-primary" onclick="acknowledgeNotif({{ n.id }})" style="padding: 2px 7px; font-size: 10.5px;">
+                                        Ack
+                                    </button>
+                                {% endif %}
+                                {% if not n.read_status %}
+                                    <button class="btn-ctrl" onclick="markRead({{ n.id }})" style="padding: 2px 7px; font-size: 10.5px;">
+                                        Read
+                                    </button>
+                                {% endif %}
+                                {% if n.event_id %}
+                                    <a href="{{ url_for('events.detail', event_id=n.event_id) }}" class="btn-ctrl" style="padding: 2px 7px; font-size: 10.5px;">
+                                        Event
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                            No security notifications recorded in this category. System perimeter is secure.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function markRead(id) {
+    fetch(`/api/notifications/${id}/read`, { method: "POST" })
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === "success") {
+                window.location.reload();
+            }
+        });
+}
+
+function acknowledgeNotif(id) {
+    fetch(`/api/notifications/${id}/acknowledge`, { method: "POST" })
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === "success") {
+                window.location.reload();
+            }
+        });
+}
+
+function markAllAsRead() {
+    fetch("/api/notifications/read-all", { method: "POST" })
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === "success") {
+                window.location.reload();
+            }
+        });
+}
+</script>
+{% endblock %}

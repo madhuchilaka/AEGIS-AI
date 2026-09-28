@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AEGIS AI | Intelligent Premises Security & Surveillance{% endblock %}</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chart.js for Telemetry Visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- Main Style -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="app-wrapper">
+        <!-- Sidebar Navigation -->
+        {% if session.get('user_id') %}
+        <aside class="app-sidebar">
+            <div class="sidebar-header">
+                <div class="logo-badge">🛡️</div>
+                <div class="brand-text">
+                    <h1>AEGIS AI</h1>
+                    <p>SOC COMMAND CENTER</p>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="{{ url_for('dashboard.index') }}" class="nav-item {% if request.endpoint == 'dashboard.index' %}active{% endif %}">
+                    <span class="icon">📊</span> Dashboard
+                </a>
+                <a href="{{ url_for('monitoring.monitor') }}" class="nav-item {% if request.endpoint == 'monitoring.monitor' %}active{% endif %}">
+                    <span class="icon">📹</span> Live Monitoring
+                </a>
+                <a href="{{ url_for('events.index') }}" class="nav-item {% if request.endpoint in ['events.index', 'events.detail'] %}active{% endif %}">
+                    <span class="icon">🚨</span> Events & Log
+                </a>
+                <a href="{{ url_for('people.index') }}" class="nav-item {% if request.endpoint == 'people.index' %}active{% endif %}">
+                    <span class="icon">👥</span> People Registry
+                </a>
+                <a href="{{ url_for('people.face_enrollment') }}" class="nav-item {% if request.endpoint == 'people.face_enrollment' %}active{% endif %}">
+                    <span class="icon">👤</span> Face Enrollment
+                </a>
+                <a href="{{ url_for('cameras.index') }}" class="nav-item {% if request.endpoint == 'cameras.index' %}active{% endif %}">
+                    <span class="icon">🎥</span> Cameras & Zones
+                </a>
+                <a href="{{ url_for('notifications.index') }}" class="nav-item {% if request.endpoint == 'notifications.index' %}active{% endif %}">
+                    <span class="icon">🔔</span> Security Alerts
+                    <span id="nav-unread-badge" class="nav-badge" style="{% if unread_notifications_count == 0 %}display:none;{% endif %}">
+                        {{ unread_notifications_count }}
+                    </span>
+                </a>
+                <a href="{{ url_for('storage_routes.index') }}" class="nav-item {% if request.endpoint == 'storage_routes.index' %}active{% endif %}">
+                    <span class="icon">💾</span> Storage & Retention
+                </a>
+                <a href="{{ url_for('settings.index') }}" class="nav-item {% if request.endpoint == 'settings.index' %}active{% endif %}">
+                    <span class="icon">⚙️</span> Security Policies
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-profile">
+                    <div class="user-avatar">{{ session.get('username', 'U')[0]|upper }}</div>
+                    <div class="user-meta">
+                        <h4>{{ session.get('full_name') or session.get('username') }}</h4>
+                        <span>{{ session.get('user_role', 'admin') }}</span>
+                    </div>
+                </div>
+                <a href="{{ url_for('auth.logout') }}" class="logout-btn" title="Logout">🚪</a>
+            </div>
+        </aside>
+        {% endif %}
+
+        <!-- Main Workspace -->
+        <main class="app-main">
+            {% if session.get('user_id') %}
+            <header class="top-bar">
+                <div class="top-bar-title">
+                    <h2>{% block page_title %}Dashboard{% endblock %}</h2>
+                    
+                    <div class="status-pills-row">
+                        <!-- Digital SOC Clock -->
+                        <div class="soc-clock-pill" id="soc-clock-container" title="SOC System Time">
+                            <span>🕒</span>
+                            <span id="soc-clock-date" style="color: var(--text-muted);">--/--/--</span>
+                            <span id="soc-clock-time" class="soc-clock-time">00:00:00</span>
+                        </div>
+
+                        <!-- Camera Status Indicator -->
+                        <div id="camera-status-indicator" class="camera-status-pill {% if not camera_status.online %}offline{% endif %}">
+                            <span class="pulse-dot"></span>
+                            {% if camera_status.online %}
+                                🟢 Camera Online ({{ camera_status.fps }} FPS)
+                            {% else %}
+                                🔴 Camera Offline
+                            {% endif %}
+                        </div>
+
+                        <!-- System Status -->
+                        <div class="camera-status-pill" style="background: rgba(56, 139, 253, 0.12); color: #60a5fa; border-color: rgba(56, 139, 253, 0.3);">
+                            <span class="pulse-dot"></span>
+                            SOC ACTIVE
+                        </div>
+                    </div>
+                </div>
+
+                <div class="top-bar-actions">
+                    <!-- Sound chime toggle -->
+                    <button id="btn-sound-toggle" class="action-icon-btn" title="Toggle Alert Audio Chimes" onclick="toggleAudioAlerts()">
+                        <span id="sound-toggle-icon">🔊</span> Audio Alerts
+                    </button>
+
+                    <a href="{{ url_for('monitoring.monitor') }}" class="action-icon-btn">
+                        <span>📹</span> Live Stream
+                    </a>
+
+                    <a href="{{ url_for('notifications.index') }}" class="action-icon-btn" title="Security Alerts">
+                        <span>🔔</span> Alerts
+                        <span id="top-unread-badge" class="badge-pill" style="{% if unread_notifications_count == 0 %}display:none;{% endif %}">
+                            {{ unread_notifications_count }}
+                        </span>
+                    </a>
+                </div>
+            </header>
+            {% endif %}
+
+            <div class="page-container">
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        <div class="flash-container">
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category }}">
+                                    <span>{{ message }}</span>
+                                    <button onclick="this.parentElement.remove()" style="background:none;border:none;color:inherit;cursor:pointer;">&times;</button>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+
+                <!-- Main Content Block -->
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <!-- Global Threat Alert Modal (Requirements 9 & 21) -->
+    <div id="threat-alert-modal" class="modal-backdrop">
+        <div class="modal-dialog threat-alert-dialog modal-lg">
+            <div class="modal-header" style="background: rgba(239, 68, 68, 0.15); border-bottom: 1px solid var(--accent-red);">
+                <div class="modal-title" style="color: #ef4444; font-weight: 700; letter-spacing: 0.5px;">
+                    <span style="font-size: 22px;">🚨</span> SECURITY INTRUSION ALERT
+                </div>
+                <button class="modal-close" onclick="closeThreatModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="threat-modal-body" style="padding: 20px;">
+                <!-- Filled dynamically by NotificationEngine -->
+            </div>
+            <div class="modal-footer" style="background: rgba(10, 14, 23, 0.9);">
+                <button id="btn-threat-view-event" class="btn-ctrl btn-primary" onclick="viewThreatEvent()">
+                    🔍 View Event Record
+                </button>
+                <button id="btn-threat-ack" class="btn-ctrl btn-danger" onclick="acknowledgeThreatAlert()">
+                    ✓ Acknowledge & Clear Alarm
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast Mountpoint -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Core Scripts -->
+    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+    <script>
+    // Live SOC Digital Clock
+    function updateSocClock() {
+        const now = new Date();
+        const dateEl = document.getElementById("soc-clock-date");
+        const timeEl = document.getElementById("soc-clock-time");
+        if (dateEl && timeEl) {
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            dateEl.textContent = `${yyyy}-${mm}-${dd}`;
+
+            const hh = String(now.getHours()).padStart(2, '0');
+            const min = String(now.getMinutes()).padStart(2, '0');
+            const ss = String(now.getSeconds()).padStart(2, '0');
+            timeEl.textContent = `${hh}:${min}:${ss}`;
+        }
+    }
+    setInterval(updateSocClock, 1000);
+    updateSocClock();
+
+    // Audio Alert Chime Toggle
+    let audioAlertsEnabled = localStorage.getItem("aegis_audio_alerts") !== "false";
+    function updateAudioToggleUI() {
+        const icon = document.getElementById("sound-toggle-icon");
+        if (icon) {
+            icon.textContent = audioAlertsEnabled ? "🔊" : "🔇";
+        }
+    }
+    function toggleAudioAlerts() {
+        audioAlertsEnabled = !audioAlertsEnabled;
+        localStorage.setItem("aegis_audio_alerts", audioAlertsEnabled ? "true" : "false");
+        updateAudioToggleUI();
+    }
+    updateAudioToggleUI();
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

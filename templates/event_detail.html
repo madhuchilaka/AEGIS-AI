@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Event Details #{{ event.id }} | AEGIS AI Security{% endblock %}
+{% block page_title %}Security Event Forensics #{{ event.id }}{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 0 auto;">
+    <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+        <a href="{{ url_for('events.index') }}" class="btn-ctrl">← Back to Events Log</a>
+        
+        <div style="display: flex; gap: 8px;">
+            {% if prev_event_id %}
+                <a href="{{ url_for('events.detail', event_id=prev_event_id) }}" class="btn-ctrl">« Previous Event</a>
+            {% endif %}
+            {% if next_event_id %}
+                <a href="{{ url_for('events.detail', event_id=next_event_id) }}" class="btn-ctrl">Next Event »</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="panel-card">
+        <div class="panel-header">
+            <div class="panel-title">
+                <span>🔍</span> Event Record Forensics & Telemetry
+                {% if event.severity == 'CRITICAL' %}
+                    <span class="badge badge-critical" style="margin-left: 8px;">CRITICAL</span>
+                {% elif event.severity == 'HIGH' %}
+                    <span class="badge badge-high" style="margin-left: 8px;">HIGH</span>
+                {% elif event.severity == 'MEDIUM' %}
+                    <span class="badge badge-medium" style="margin-left: 8px;">MEDIUM</span>
+                {% else %}
+                    <span class="badge badge-info" style="margin-left: 8px;">{{ event.severity }}</span>
+                {% endif %}
+            </div>
+            <span style="font-family: var(--font-mono); font-size: 12px; color: var(--accent-cyan);">{{ event.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+        </div>
+        <div class="panel-body">
+            <div class="snapshot-viewer-container" style="margin-bottom: 20px;">
+                {% if event.snapshot_path %}
+                    <div class="snapshot-toolbar">
+                        <a href="{{ url_for('storage_routes.serve_storage_file', filename=event.snapshot_path) }}" download class="btn-ctrl" title="Download High-Res Snapshot">
+                            📥 Download Snapshot
+                        </a>
+                    </div>
+                    <img src="{{ url_for('storage_routes.serve_storage_file', filename=event.snapshot_path) }}" alt="Event High-Res Snapshot" class="snapshot-viewer-img">
+                {% else %}
+                    <p style="color: var(--text-muted); padding: 40px 0;">No snapshot file associated with this event.</p>
+                {% endif %}
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 13.5px;">
+                <div style="background: rgba(10, 14, 23, 0.7); padding: 16px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <h4 style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Entity Classification</h4>
+                    <p style="margin-bottom: 8px;"><strong>Type:</strong> {{ event.entity_type }}</p>
+                    <p style="margin-bottom: 8px;"><strong>Name / Subject:</strong> {{ event.entity_name }}</p>
+                    <p style="margin-bottom: 8px;">
+                        <strong>Recognition Status:</strong>
+                        {% if event.recognition_status == 'KNOWN' %}
+                            <span class="badge badge-known">KNOWN</span>
+                        {% elif event.recognition_status == 'UNKNOWN' %}
+                            <span class="badge badge-unknown">UNKNOWN</span>
+                        {% else %}
+                            <span class="badge badge-info">{{ event.recognition_status }}</span>
+                        {% endif %}
+                    </p>
+                    <p><strong>Model Confidence:</strong> <span style="font-family: var(--font-mono); font-weight: 600;">{{ (event.confidence * 100)|int }}%</span></p>
+                </div>
+
+                <div style="background: rgba(10, 14, 23, 0.7); padding: 16px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <h4 style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Spatial Context & Security Flags</h4>
+                    <p style="margin-bottom: 8px;"><strong>Camera:</strong> {{ event.camera.name if event.camera else 'Camera #1' }}</p>
+                    <p style="margin-bottom: 8px;"><strong>Restricted Zone:</strong> {{ event.zone_name or 'Unrestricted / General Area' }}</p>
+                    <p style="margin-bottom: 8px;">
+                        <strong>Direction:</strong>
+                        {% if event.direction == 'ENTRY' %}
+                            <span class="badge badge-entry">ENTRY</span>
+                        {% elif event.direction == 'EXIT' %}
+                            <span class="badge badge-exit">EXIT</span>
+                        {% else %}
+                            <span>Stationary / Non-crossing</span>
+                        {% endif %}
+                    </p>
+                    <p style="margin-bottom: 8px;"><strong>Associated Subject:</strong> {{ event.person.name if event.person else 'None' }}</p>
+                    <p>
+                        <strong>Acknowledgment:</strong>
+                        {% if event.is_acknowledged %}
+                            <span class="badge badge-known">ACKNOWLEDGED</span>
+                            {% if event.acknowledged_at %}
+                                <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">({{ event.acknowledged_at.strftime('%H:%M:%S') }})</span>
+                            {% endif %}
+                        {% else %}
+                            <button class="btn-ctrl btn-primary" onclick="acknowledgeDetailEvent({{ event.id }})" style="padding: 2px 8px; font-size: 11px; margin-left: 6px;">
+                                ✓ Acknowledge
+                            </button>
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function acknowledgeDetailEvent(id) {
+    fetch(`/api/events/${id}/acknowledge`, { method: "POST" })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === "success") {
+                window.location.reload();
+            }
+        });
+}
+</script>
+{% endblock %}

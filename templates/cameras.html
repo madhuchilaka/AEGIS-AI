@@ -1,0 +1,370 @@
+{% extends "base.html" %}
+
+{% block title %}Camera Configuration | AEGIS AI Security Operations Center{% endblock %}
+{% block page_title %}Camera & Spatial Zone Management{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <p style="font-size: 13px; color: var(--text-secondary);">
+        Configure video input sources, virtual tripwires, and high-security restricted zones with temporal authorization rules.
+    </p>
+    <button class="btn-ctrl btn-primary" onclick="openAddCameraModal()">
+        + Add New Camera Source
+    </button>
+</div>
+
+<!-- Cameras Grid -->
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; margin-bottom: 24px;">
+    {% for cam in cameras %}
+    <div class="panel-card" style="margin-bottom: 0;">
+        <div class="panel-header">
+            <div class="panel-title">
+                <span>📹</span> {{ cam.name }}
+            </div>
+            <span class="badge {% if cam.enabled %}badge-known{% else %}badge-unknown{% endif %}">
+                {% if cam.enabled %}ONLINE{% else %}STANDBY{% endif %}
+            </span>
+        </div>
+        <div class="panel-body" style="font-size: 13px;">
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+                <div><strong>Source Type:</strong> <span style="text-transform: uppercase; color: var(--accent-cyan);">{{ cam.source_type }}</span></div>
+                <div style="word-break: break-all;"><strong>Source Path:</strong> <span style="font-family: var(--font-mono); color: #60a5fa;">{{ cam.source }}</span></div>
+                <div><strong>Resolution / Target FPS:</strong> {{ cam.resolution }} @ {{ cam.fps }} FPS</div>
+                <div><strong>Detection Confidence:</strong> {{ cam.confidence_threshold }}</div>
+                <div><strong>Virtual Line:</strong> {{ cam.line_orientation }} (Pos: {{ (cam.line_position * 100)|int }}%)</div>
+            </div>
+
+            <div style="display: flex; gap: 6px; border-top: 1px solid var(--border-color); padding-top: 12px; flex-wrap: wrap;">
+                <button class="btn-ctrl btn-primary" onclick="switchActiveCamera({{ cam.id }})" style="flex: 1; padding: 6px 10px; font-size: 11.5px;">
+                    ▶ Make Active
+                </button>
+                <button class="btn-ctrl" onclick="openZonesModal({{ cam.id }}, '{{ cam.name|escape }}')" style="padding: 6px 10px; font-size: 11.5px;">
+                    🛡️ Restricted Zones
+                </button>
+                <button class="btn-ctrl btn-danger" onclick="deleteCamera({{ cam.id }}, '{{ cam.name|escape }}')" style="padding: 6px 10px; font-size: 11.5px;">
+                    🗑️
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Add Camera Modal -->
+<div id="add-camera-modal" class="modal-backdrop">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3 class="modal-title">Configure New Camera Source</h3>
+            <button class="modal-close" onclick="closeAddCameraModal()">&times;</button>
+        </div>
+        <form onsubmit="handleCreateCamera(event)">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label" for="cam-name">Camera Name *</label>
+                    <input type="text" id="cam-name" class="form-control" placeholder="e.g. Server Room Entrance" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="cam-type">Source Type</label>
+                        <select id="cam-type" class="form-control" onchange="updateSourcePlaceholder()">
+                            <option value="webcam">Local / USB Webcam</option>
+                            <option value="rtsp">CCTV / IP Camera (RTSP)</option>
+                            <option value="video">Video File</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="cam-source">Camera Source *</label>
+                        <input type="text" id="cam-source" class="form-control" placeholder="0 (Webcam index)" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="cam-res">Resolution</label>
+                        <select id="cam-res" class="form-control">
+                            <option value="640x480">640 x 480 (Recommended)</option>
+                            <option value="1280x720">1280 x 720 (HD)</option>
+                            <option value="1920x1080">1920 x 1080 (FHD)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="cam-fps">FPS Target</label>
+                        <input type="number" id="cam-fps" class="form-control" value="25" min="5" max="60">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="cam-conf">Detection Confidence (0.1 - 0.9)</label>
+                        <input type="number" id="cam-conf" class="form-control" value="0.45" step="0.05" min="0.1" max="0.95">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="cam-face-th">Face Match Threshold (0.1 - 0.9)</label>
+                        <input type="number" id="cam-face-th" class="form-control" value="0.40" step="0.05" min="0.1" max="0.95">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="cam-line-orient">Virtual Line Orientation</label>
+                        <select id="cam-line-orient" class="form-control">
+                            <option value="horizontal">Horizontal (Top: Exit | Bottom: Entry)</option>
+                            <option value="vertical">Vertical (Left: Exit | Right: Entry)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="cam-line-pos">Virtual Line Position (0.1 - 0.9)</label>
+                        <input type="number" id="cam-line-pos" class="form-control" value="0.50" step="0.05" min="0.1" max="0.9">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-ctrl" onclick="closeAddCameraModal()">Cancel</button>
+                <button type="submit" class="btn-ctrl btn-primary">Save Camera</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Restricted Zones Modal -->
+<div id="zones-modal" class="modal-backdrop">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <span>🛡️</span> Restricted Zones for <span id="zones-cam-name" style="color: var(--accent-cyan);">Camera</span>
+            </h3>
+            <button class="modal-close" onclick="closeZonesModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 20px;">
+            <!-- Existing Zones List -->
+            <h4 style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px; text-transform: uppercase;">Active Zones</h4>
+            <div id="zones-list-container" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px;">
+                <p style="color: var(--text-muted); font-size: 12px;">Loading configured zones...</p>
+            </div>
+
+            <!-- Create New Zone Form -->
+            <div style="background: rgba(10, 14, 23, 0.7); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px;">
+                <h4 style="font-size: 13px; color: #fff; margin-bottom: 12px;">Define New Restricted Zone</h4>
+                <form id="zone-form" onsubmit="handleCreateZone(event)">
+                    <div class="form-group">
+                        <label class="form-label">Zone Name *</label>
+                        <input type="text" id="zone-name" class="form-control" placeholder="e.g. Server Rack Vault" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Alert Severity</label>
+                            <select id="zone-alert-level" class="form-control">
+                                <option value="CRITICAL">CRITICAL (Zero-Tolerance Intrusion)</option>
+                                <option value="HIGH" selected>HIGH</option>
+                                <option value="MEDIUM">MEDIUM</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Allowed Operating Window</label>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <input type="time" id="zone-time-start" class="form-control" value="08:00">
+                                <span style="color: var(--text-muted);">to</span>
+                                <input type="time" id="zone-time-end" class="form-control" value="20:00">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Normalized Bounding Coordinates (X1, Y1, X2, Y2 from 0.0 to 1.0)</label>
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+                            <input type="number" id="zone-x1" class="form-control" placeholder="x1" value="0.10" step="0.05" min="0" max="1">
+                            <input type="number" id="zone-y1" class="form-control" placeholder="y1" value="0.10" step="0.05" min="0" max="1">
+                            <input type="number" id="zone-x2" class="form-control" placeholder="x2" value="0.90" step="0.05" min="0" max="1">
+                            <input type="number" id="zone-y2" class="form-control" placeholder="y2" value="0.90" step="0.05" min="0" max="1">
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: flex-end; margin-top: 10px;">
+                        <button type="submit" class="btn-ctrl btn-primary">Save Restricted Zone</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-ctrl" onclick="closeZonesModal()">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentZonesCamId = null;
+
+function openAddCameraModal() {
+    document.getElementById("add-camera-modal").classList.add("show");
+}
+
+function closeAddCameraModal() {
+    document.getElementById("add-camera-modal").classList.remove("show");
+}
+
+function updateSourcePlaceholder() {
+    const type = document.getElementById("cam-type").value;
+    const input = document.getElementById("cam-source");
+    if (type === "webcam") {
+        input.placeholder = "0 (or 1 for external USB camera)";
+        input.value = "0";
+    } else if (type === "rtsp") {
+        input.placeholder = "rtsp://username:password@192.168.1.100:554/stream";
+        input.value = "";
+    } else {
+        input.placeholder = "path/to/security_footage.mp4";
+        input.value = "";
+    }
+}
+
+function handleCreateCamera(e) {
+    e.preventDefault();
+    const payload = {
+        name: document.getElementById("cam-name").value.trim(),
+        source_type: document.getElementById("cam-type").value,
+        source: document.getElementById("cam-source").value.trim(),
+        resolution: document.getElementById("cam-res").value,
+        fps: parseInt(document.getElementById("cam-fps").value),
+        confidence_threshold: parseFloat(document.getElementById("cam-conf").value),
+        face_threshold: parseFloat(document.getElementById("cam-face-th").value),
+        line_orientation: document.getElementById("cam-line-orient").value,
+        line_position: parseFloat(document.getElementById("cam-line-pos").value),
+        enabled: true
+    };
+
+    fetch("/api/cameras", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === "success") {
+            window.location.reload();
+        } else {
+            alert(data.message || "Failed to add camera.");
+        }
+    });
+}
+
+function switchActiveCamera(camId) {
+    fetch("/api/camera/switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ camera_id: camId })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === "success") {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert("Switch error: " + data.message);
+        }
+    });
+}
+
+function deleteCamera(camId, name) {
+    if (confirm(`Delete camera configuration '${name}'?`)) {
+        fetch(`/api/cameras/${camId}`, { method: "DELETE" })
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === "success") {
+                    window.location.reload();
+                }
+            });
+    }
+}
+
+// Restricted Zones UI
+function openZonesModal(camId, camName) {
+    currentZonesCamId = camId;
+    document.getElementById("zones-cam-name").textContent = camName;
+    document.getElementById("zones-modal").classList.add("show");
+    loadCameraZones(camId);
+}
+
+function closeZonesModal() {
+    document.getElementById("zones-modal").classList.remove("show");
+}
+
+function loadCameraZones(camId) {
+    const container = document.getElementById("zones-list-container");
+    container.innerHTML = `<p style="color:var(--text-muted);font-size:12px;">Loading zones...</p>`;
+
+    fetch(`/api/cameras/${camId}/zones`)
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === "success") {
+                if (res.zones.length === 0) {
+                    container.innerHTML = `<p style="color:var(--text-muted);font-size:12px;padding:8px 0;">No restricted zones configured for this camera yet.</p>`;
+                    return;
+                }
+                container.innerHTML = res.zones.map(z => `
+                    <div style="background: rgba(18, 24, 38, 0.9); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>${escapeHTML(z.name)}</strong>
+                            <span class="badge ${z.alert_level === 'CRITICAL' ? 'badge-critical' : 'badge-high'}" style="margin-left: 8px;">${z.alert_level}</span>
+                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                                Allowed Window: ${z.allowed_hours_start} - ${z.allowed_hours_end} • Bounds: [${z.coordinates.x1}, ${z.coordinates.y1}, ${z.coordinates.x2}, ${z.coordinates.y2}]
+                            </div>
+                        </div>
+                        <button class="btn-ctrl btn-danger" onclick="deleteZone(${z.id})" style="padding: 4px 8px; font-size: 11px;">
+                            Delete
+                        </button>
+                    </div>
+                `).join("");
+            }
+        });
+}
+
+function handleCreateZone(e) {
+    e.preventDefault();
+    if (!currentZonesCamId) return;
+
+    const payload = {
+        name: document.getElementById("zone-name").value.trim(),
+        alert_level: document.getElementById("zone-alert-level").value,
+        allowed_hours_start: document.getElementById("zone-time-start").value,
+        allowed_hours_end: document.getElementById("zone-time-end").value,
+        coordinates: {
+            x1: parseFloat(document.getElementById("zone-x1").value),
+            y1: parseFloat(document.getElementById("zone-y1").value),
+            x2: parseFloat(document.getElementById("zone-x2").value),
+            y2: parseFloat(document.getElementById("zone-y2").value)
+        }
+    };
+
+    fetch(`/api/cameras/${currentZonesCamId}/zones`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === "success") {
+            loadCameraZones(currentZonesCamId);
+            document.getElementById("zone-name").value = "";
+        } else {
+            alert("Error: " + (data.message || "Failed to create zone"));
+        }
+    });
+}
+
+function deleteZone(zoneId) {
+    if (confirm("Delete this restricted zone?")) {
+        fetch(`/api/zones/${zoneId}`, { method: "DELETE" })
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === "success") {
+                    loadCameraZones(currentZonesCamId);
+                }
+            });
+    }
+}
+
+function escapeHTML(str) {
+    if (!str) return "";
+    return String(str).replace(/[&<>'"]/g, 
+        tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+    );
+}
+</script>
+{% endblock %}
