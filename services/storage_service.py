@@ -5,6 +5,7 @@ import numpy as np
 from datetime import datetime, timezone
 from pathlib import Path
 from config import Config
+from typing import Optional
 
 class StorageService:
     def __init__(self, base_storage_dir=None):
