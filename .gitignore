@@ -32,3 +32,12 @@ instance/*.log
 # Operating system files
 .DS_Store
 Thumbs.db
+
+# Runtime database
+instance/*.db
+
+# Surveillance snapshots
+storage/snapshots/
+
+# Enrolled face data
+storage/face_data/
